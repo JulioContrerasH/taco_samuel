@@ -5,7 +5,7 @@ import rasterio as rio
 import torch
 from skimage.exposure import match_histograms
 
-ROOT_DIR = pathlib.Path("taco_example")
+ROOT_DIR = pathlib.Path("/data/USERS/shollend/taco_example")
 table = pd.read_csv(ROOT_DIR / "metadata.csv")
 
 # Generate file paths for each image type (high-resolution, low-resolution, etc.)
