@@ -79,8 +79,8 @@ for i, row in table.iterrows():
         zstd_level=13,
         interleave="band",
         tiled=True,
-        blockxsize=128,
-        blockysize=128,
+        blockxsize=32,
+        blockysize=32,
         discard_lsb=2
     )
 
