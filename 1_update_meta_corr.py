@@ -1,11 +1,11 @@
 from utils_histogram import *
 import pathlib
-import pandas as pd
 import rasterio as rio
 import torch
+import pandas as pd
 from skimage.exposure import match_histograms
 
-ROOT_DIR = pathlib.Path("/data/USERS/shollend/taco_example")
+ROOT_DIR = pathlib.Path("/data/USERS/shollend/taco")
 table = pd.read_csv(ROOT_DIR / "metadata.csv")
 
 # Generate file paths for each image type (high-resolution, low-resolution, etc.)
@@ -28,6 +28,25 @@ low_cors = []
 
 # Iterate over each row in the metadata table
 for i, row in table.iterrows():
+    # compress HR mask
+    with rio.open(row["hr_mask_path"]) as src_hr_mask:
+        metadata_hr_mask = src_hr_mask.meta
+        src_hr_mask_data = src_hr_mask.read()
+
+    metadata_hr_mask.update(
+        dtype=rio.uint8,
+        compress="zstd",
+        zstd_level=13,
+        interleave="band",
+        tiled=True,
+        blockxsize=128,
+        blockysize=128,
+        discard_lsb=2
+    )
+
+    with rio.open(row["hr_mask_path"], "w", **metadata_hr_mask) as dst:
+        dst.write(src_hr_mask_data)
+
     # Open and read high-resolution (HR) and low-resolution (LR) images
     with rio.open(row["hr_othofoto_path"]) as src_hr, rio.open(row["lr_s2_path"]) as src_lr:
         metadata_hr = src_hr.meta
@@ -86,6 +105,9 @@ for i, row in table.iterrows():
 
     with rio.open(row["lr_harm_path"], "w", **metadata_lrharm) as dst:
         dst.write((lrharm * 10_000).round().astype(rio.uint16))
+
+    # compress HR Mask as well
+
 
 # Add the low correlation values to the table and save it to a new CSV file
 table["low_cor"] = low_cors

@@ -6,13 +6,12 @@ import rasterio as rio
 import datetime
 import ee
 
-
 # Authenticate and initialize Google Earth Engine
 ee.Authenticate()
-ee.Initialize(project="ee-contrerasnetk") # change it
+ee.Initialize(project="ee-samuelsuperresolution")
 
 # Define the root directory for dataset
-ROOT_DIR = pathlib.Path("taco_example")
+ROOT_DIR = pathlib.Path("/data/USERS/shollend/taco_example")
 table = pd.read_csv(ROOT_DIR / "metadata_updated.csv")
 
 # Iterate over rows of the metadata table to process each image
