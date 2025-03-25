@@ -1,15 +1,24 @@
+import numpy as np
+
 from utils_histogram import *
 import pathlib
+import time
+import os
+from multiprocessing import Pool
 import rasterio as rio
 import torch
 import pandas as pd
+from tqdm import tqdm
 from skimage.exposure import match_histograms
+
+#np.seterr(all="raise")  # Convert warnings to exceptions
 
 ROOT_DIR = pathlib.Path("/data/USERS/shollend/taco")
 table = pd.read_csv(ROOT_DIR / "metadata.csv")
 
 # Generate file paths for each image type (high-resolution, low-resolution, etc.)
-table["hr_mask_path"] = ROOT_DIR / "hr_mask" / ("HR_mask_" + table["image_id"])  
+table["hr_mask_path"] = ROOT_DIR / "hr_mask" / ("HR_mask_" + table["image_id"])
+table["hr_compressed_mask_path"] = ROOT_DIR / "hr_compressed_mask" / ("HR_mask_" + table["image_id"])
 table["hr_othofoto_path"] = ROOT_DIR / "hr_orthofoto" / ("HR_ortho_" + table["image_id"])
 table["lr_s2_path"] = ROOT_DIR / "lr_s2" /  ("S2_" + table["image_id"])
 table["lr_harm_path"] = ROOT_DIR / "lr_harm" /  ("lr_harm_" + table["image_id"])
@@ -19,15 +28,17 @@ table["tortilla_path"] = ROOT_DIR / "tortilla" /  (table["image_id"].str.split("
 # Ensure the necessary directories exist
 parent_lr = table["lr_harm_path"].iloc[0].parent
 parent_lr.mkdir(exist_ok=True)
+parent_lr = table["hr_compressed_mask_path"].iloc[0].parent
+print(table["hr_compressed_mask_path"].iloc[0].parent)
+parent_lr.mkdir(exist_ok=True)
 parent_hr = table["hr_harm_path"].iloc[0].parent
 parent_hr.mkdir(exist_ok=True)
 parent_tortilla = table["tortilla_path"].iloc[0].parent
 parent_tortilla.mkdir(exist_ok=True)
 
-low_cors = []
 
-# Iterate over each row in the metadata table
-for i, row in table.iterrows():
+def _parallel(row: pd.Series) -> np.array:
+    # Iterate over each row in the metadata table
     # compress HR mask
     with rio.open(row["hr_mask_path"]) as src_hr_mask:
         metadata_hr_mask = src_hr_mask.meta
@@ -44,7 +55,7 @@ for i, row in table.iterrows():
         discard_lsb=2
     )
 
-    with rio.open(row["hr_mask_path"], "w", **metadata_hr_mask) as dst:
+    with rio.open(row["hr_compressed_mask_path"], "w", **metadata_hr_mask) as dst:
         dst.write(src_hr_mask_data)
 
     # Open and read high-resolution (HR) and low-resolution (LR) images
@@ -71,7 +82,7 @@ for i, row in table.iterrows():
 
     # Report the 10th percentile of the correlation (low correlation)
     low_cor = np.quantile(corr, 0.10)  # This value is added to the dataset
-    low_cors.append(low_cor)
+    row["low_corr"] = low_cor
 
     # Save the HRharm image with updated metadata
     metadata_hrharm = metadata_hr.copy()
@@ -106,9 +117,40 @@ for i, row in table.iterrows():
     with rio.open(row["lr_harm_path"], "w", **metadata_lrharm) as dst:
         dst.write((lrharm * 10_000).round().astype(rio.uint16))
 
-    # compress HR Mask as well
+    return row
+
+
+def process_parallel():
+    print('start')
+    start = time.time()
+    rows = [row for _, row in table.iterrows()]
+
+    with Pool(processes=os.cpu_count()) as pool:
+        #results = pool.map(_parallel, rows)
+        results = list(tqdm(pool.imap_unordered(_parallel, rows), total=len(rows), desc="Processing"))
+
+    new_df = pd.DataFrame(results)
+
+    print(f'took: {round(time.time() - start, 2)}s')
+
+    return new_df
+
+
+def process_sequential():
+    print('start')
+    start = time.time()
+
+    results = []
+    for _, row in table.iterrows():
+        results.append(_parallel(row))
+
+    new_df = pd.DataFrame(results)
+
+    print(f'took: {round(time.time() - start, 2)}s')
+
+    return new_df
 
 
 # Add the low correlation values to the table and save it to a new CSV file
-table["low_cor"] = low_cors
-table.to_csv(ROOT_DIR / "metadata_updated.csv")
+table_new = process_parallel()
+table_new.to_csv(ROOT_DIR / "metadata_updated.csv")
