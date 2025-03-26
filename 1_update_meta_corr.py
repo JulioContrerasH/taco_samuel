@@ -13,13 +13,14 @@ from skimage.exposure import match_histograms
 
 #np.seterr(all="raise")  # Convert warnings to exceptions
 
-ROOT_DIR = pathlib.Path("/data/USERS/shollend/taco")
+ROOT_DIR = pathlib.Path("/data/USERS/shollend/taco_example")
 table = pd.read_csv(ROOT_DIR / "metadata.csv")
 
 # Generate file paths for each image type (high-resolution, low-resolution, etc.)
 table["hr_mask_path"] = ROOT_DIR / "hr_mask" / ("HR_mask_" + table["image_id"])
 table["hr_compressed_mask_path"] = ROOT_DIR / "hr_compressed_mask" / ("HR_mask_" + table["image_id"])
 table["hr_othofoto_path"] = ROOT_DIR / "hr_orthofoto" / ("HR_ortho_" + table["image_id"])
+table["hr_compressed_othofoto_path"] = ROOT_DIR / "hr_compressed_orthofoto" / ("HR_ortho_" + table["image_id"])
 table["lr_s2_path"] = ROOT_DIR / "lr_s2" /  ("S2_" + table["image_id"])
 table["lr_harm_path"] = ROOT_DIR / "lr_harm" /  ("lr_harm_" + table["image_id"])
 table["hr_harm_path"] = ROOT_DIR / "hr_harm" /  ("hr_harm_" + table["image_id"])
@@ -28,9 +29,10 @@ table["tortilla_path"] = ROOT_DIR / "tortilla" /  (table["image_id"].str.split("
 # Ensure the necessary directories exist
 parent_lr = table["lr_harm_path"].iloc[0].parent
 parent_lr.mkdir(exist_ok=True)
-parent_lr = table["hr_compressed_mask_path"].iloc[0].parent
-print(table["hr_compressed_mask_path"].iloc[0].parent)
-parent_lr.mkdir(exist_ok=True)
+parent_hr_mask = table["hr_compressed_mask_path"].iloc[0].parent
+parent_hr_mask.mkdir(exist_ok=True)
+parent_hr_compressed = table["hr_compressed_othofoto_path"].iloc[0].parent
+parent_hr_compressed.mkdir(exist_ok=True)
 parent_hr = table["hr_harm_path"].iloc[0].parent
 parent_hr.mkdir(exist_ok=True)
 parent_tortilla = table["tortilla_path"].iloc[0].parent
@@ -52,7 +54,8 @@ def _parallel(row: pd.Series) -> np.array:
         tiled=True,
         blockxsize=128,
         blockysize=128,
-        discard_lsb=2
+        # discard_lsb removes class labels111
+        #discard_lsb=2
     )
 
     with rio.open(row["hr_compressed_mask_path"], "w", **metadata_hr_mask) as dst:
@@ -153,4 +156,4 @@ def process_sequential():
 
 # Add the low correlation values to the table and save it to a new CSV file
 table_new = process_parallel()
-table_new.to_csv(ROOT_DIR / "metadata_updated.csv")
+# table_new.to_csv(ROOT_DIR / "metadata_updated.csv")

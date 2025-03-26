@@ -128,9 +128,9 @@ def process_parallel():
     start = time.time()
     rows = [row for _, row in table.iterrows()]
 
-    with Pool(processes=os.cpu_count()) as pool:
-        #results = pool.map(_parallel, rows)
-        res = tqdm(pool.imap_unordered(_parallel, rows), total=len(rows), desc="Processing")
+    from concurrent.futures import ProcessPoolExecutor
+    with ProcessPoolExecutor() as executor:
+        results = list(executor.map(_parallel, rows))
 
     print(f'took: {round(time.time() - start, 2)}s')
 
@@ -141,7 +141,7 @@ def process_sequential():
     print('start')
     start = time.time()
 
-    for _, row in table.iterrows():
+    for _, row in table[:50].iterrows():
         if _ % 100 == 0:
             print(f"Processing {_}/{len(table)}")
         res = _parallel(row)
@@ -151,4 +151,5 @@ def process_sequential():
     return
 
 
-process_sequential()
+process_parallel()
+#process_sequential()

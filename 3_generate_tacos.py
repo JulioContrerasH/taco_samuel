@@ -4,6 +4,7 @@ import tacotoolbox
 import tacoreader
 import rasterio as rio
 import datetime
+from tqdm import tqdm
 import ee
 
 # Authenticate and initialize Google Earth Engine
@@ -14,15 +15,8 @@ ee.Initialize(project="ee-samuelsuperresolution")
 ROOT_DIR = pathlib.Path("/data/USERS/shollend/taco")
 table = pd.read_csv(ROOT_DIR / "metadata_updated.csv")
 
-# Process tortilla files and append corresponding metadata
-sample_tortillas = []
 
-for index, row in table.iterrows():
-    
-    # Print progress every 100 rows
-    if index % 100 == 0:
-        print(f"Processing {index}/{len(table)}")
-
+def _parallel(row):
     # Load tortilla data for each row
     sample_data = tacoreader.load(row["tortilla_path"])
     sample_data = sample_data.iloc[1]
@@ -50,11 +44,21 @@ for index, row in table.iterrows():
         s2_full_id=row["s2_full_id"],
         s2_tile_time=row["time"],
         cs_cdf=row["cs_cdf"],
-        low_corr=row["low_corr"],
+        ortho_has_nodata=row["orthofoto_contains_nodata"],
         scale_factor=4,
         **dist_count_dict
     )
-    sample_tortillas.append(sample_tortilla)
+    return sample_tortilla
+
+
+# Process tortilla files and append corresponding metadata
+rows = [row for _, row in table.iterrows()]
+
+from concurrent.futures import ProcessPoolExecutor
+with ProcessPoolExecutor() as executor:
+    sample_tortillas = list(tqdm(executor.map(_parallel, rows), total=len(rows), desc="Processing Rows"))
+
+print('sampled all tortillas')
 
 # Create a collection of all tortilla samples
 samples = tacotoolbox.tortilla.datamodel.Samples(
@@ -71,13 +75,13 @@ samples_obj = samples.include_rai_metadata(
 # Create a collection object with metadata for the dataset
 description="""
 
-A dataset containing 52105 tiles of paired Sentinel-2 multispectral images, RGBNIR Orthofoto imagery, and cadastral ground truth information covering all of Austria for validating super-resolution (SR) algorithms. 
-Each pair consists of a Sentinel-2 image at 10 m resolution, a spatially and temporally aligned Orthofoto image at 2.5 m resolution (resampled from original 0.2 m), and a corresponding ground truth mask with cadastral classes rasterized to similar resolution and extent as the Orthofoto.
+A dataset containing 52105 tiles of paired Sentinel-2 multispectral images, RGBNIR Orthophoto imagery, and cadastral ground truth information covering all of Austria for validating super-resolution (SR) algorithms. 
+Each pair consists of a Sentinel-2 image at 10 m resolution, a spatially and temporally aligned Orthophoto image at 2.5 m resolution (resampled from original 0.2 m), and a corresponding ground truth mask with cadastral classes rasterized to similar resolution and extent as the Orthophoto.
 
 **Sentinel-2 MSI:** Sentinel-2 is a twin-satellite mission (2A/2B) providing optical imagery with 13 spectral bands spanning visible, near-infrared (VNIR) and shortwave-infrared (SWIR) wavelengths. The Multispectral Instrument (MSI) samples four bands at 10 m, six bands at 20 m, and three bands at 60 m spatial resolution. Sentinel-2’s bands cover 443 nm (coastal aerosol) to 2202 nm (SWIR), supporting applications in vegetation monitoring, water resources, land cover and more. The mission offers global land coverage every ~5 days (with both satellites) and a free, open data policy. In this dataset, Sentinel-2 Level-2A surface reflectance images are used as the **low-resolution (LR)** input. Only images with a cloud score >= 0.8 were selected.
 
 
-**Orthofoto:** The Orthofotos are captured by each Austrian state indivudally every three years and are aggregated, orthorectifies, and provided by the Austrian land surveying agency Bundesamt für Eich- und Vermessugnswesen (BEV). The images are captured during the summer months (May to September) during Austrias peak agricultural season, but not at the same time, as each state follows its own three year cycle (see Figure below). Images have a high resolution of 0.2 m along four spectral bands: Red, Green, Blue, Near Infrared, which have been resampled to 2.5 m to allowe the validation of SR algorithms.
+**Orthophoto:** The Orthophotos are captured by each Austrian state indivudally every three years and are aggregated, orthorectifies, and provided by the Austrian land surveying agency Bundesamt für Eich- und Vermessugnswesen (BEV). The images are captured during the summer months (May to September) during Austrias peak agricultural season, but not at the same time, as each state follows its own three year cycle (see Figure below). Images have a high resolution of 0.2 m along four spectral bands: Red, Green, Blue, Near Infrared, which have been resampled to 2.5 m to allowe the validation of SR algorithms.
 
 
 **Cadastral Data:** Cadastral data is a vector-based dataset provided by BEV and represent the legal registry for land ownership and management in Austria. It is published semi-annualy at the beginning of April and October. The data is rasterized to 2.5 m and saved as a single band image with each cadastral class reprsented by a unique integer value. In total, 26 cadastral classes are available, ranging from buildings, forest, pastures, road infrastructure to glaciers, open rock and others (see Table below).
@@ -110,18 +114,16 @@ Each pair consists of a Sentinel-2 image at 10 m resolution, a spatially and tem
 | 52   | Gardens                             |
 | 54   | Alps                                |
 
-
-
-Both Orthofoto and cadastral data is temporally and spatially aligned with each other and the Sentinel-2 images. A publication detailing this processing is currently under review.
+Both Orthophoto and cadastral data is temporally and spatially aligned with each other and the Sentinel-2 images. A publication detailing this processing is currently under review.
 
 **Dataset Content:**
 
 The dataset contains several parts:
 
 - **Sentinel-2:** Image tile (128x128, uint16) featuring all bands at 10 m to 60 m resolution.
-- **Sentinel-2 harmonized:** Image tile (128x128, uint16) featuring all bands at 10 m to 60 m resolution. Each tile is histogram matched to the corresponding Orthofoto tile.
-- **Orthofoto:** Image tile (512x512, uint8) featuring RGBNIR bands at 2.5 m resolution.
-- **Orthofoto harmonized:** Image tile (512x512, uint16) featuring RGBNIR bands at 2.5 m resolution. Each tile is histogram matched to the corresponding Sentinel-2 tile.
+- **Sentinel-2 harmonized:** Image tile (128x128, uint16) featuring all bands at 10 m to 60 m resolution. Each tile is histogram matched to the corresponding Orthophoto tile.
+- **Orthophoto:** Image tile (512x512, uint8) featuring RGBNIR bands at 2.5 m resolution.
+- **Orthophoto harmonized:** Image tile (512x512, uint16) featuring RGBNIR bands at 2.5 m resolution. Each tile is histogram matched to the corresponding Sentinel-2 tile.
 - **Cadastral mask:** Image tile (512x512, uint8) single band at 2.5 m resolution. Each class is represented as its integer code.
 
 Additional metadata available for each tortilla includes:
@@ -129,9 +131,9 @@ Additional metadata available for each tortilla includes:
 - Original Sentinel-2 tile id (s2_full_id)
 - Sentinel-2 tile capture date (time)
 - Sentinel-2 cloud score (cs_cdf)
-- Harmonization correlation (low_corr)
-- Original Orthofoto tile id (ARCHIVNR)
-- Orthofoto capture time frame (ortho_begin_date and ortho_end_date)
+- Flag if Orthophoto contains NoData values (ortho_has_nodata)
+- Original Orthophoto tile id (ARCHIVNR)
+- Orthophoto capture time frame (ortho_begin_date and ortho_end_date)
 - Percentage distribution (dist_*) of cadastral classes for each mask including NoData values (from 0-1)
 - Aggregated Corine Landcover Classification (corine) sampled from a 100m CLC raster for the centroid of each tile:
 	- 1: urban
@@ -155,21 +157,21 @@ The dataset is organized in TACO multi-part files for direct use with the TACO f
 
 collection_object = tacotoolbox.datamodel.Collection(
     id="sen2austria",
-    title="SEN2AUSTRIA: A Super-Resolution Validation Dataset with Austrian Orthofoto Imagery and Cadstral Ground Truth Data",
+    title="SEN2AUSTRIA: A Super-Resolution Validation Dataset with Austrian Orthophoto Imagery and Cadstral Ground Truth Data",
     dataset_version="0.0.1",  # Update version accordingly
     description=description,
-    licenses=["cc-by-4.0"],
+    licenses=["cc-by-4.0", "cc0-1.0"],
     extent={
         "spatial": [[9.5307489063037725, 46.3724547018787021, 17.1607732062705942, 49.0205246407950739]],
         # Define spatial extent
         "temporal": [["2021-05-11T00:00:00Z", "2023-09-27T00:00:00Z"]]  # Define temporal extent
     },
     providers=[{
-        "name": "a",  # Update provider name
+        "name": "Bundesamt für Eich- und Vermessungswesen",  # Update provider name
         "roles": ["host"],
-        "links": [{"href": "", "rel": "source", "type": "text/html"}],
+        "links": [{"href": "https://www.bev.gv.at/", "rel": "source", "type": "text/html"}],
     }],
-    keywords=["remote-sensing", "super-resolution", "deep-learning", "sentinel-2", "orthofoto"],
+    keywords=["remote-sensing", "super-resolution", "deep-learning", "sentinel-2", "Orthophoto", "super-resolution-validation"],
     task="super-resolution",
     curators=[{
         "name": "Samuel Hollendonner",
@@ -186,7 +188,7 @@ collection_object = tacotoolbox.datamodel.Collection(
     split_strategy="none",
     discuss_link={"href": "", "rel": "source", "type": "text/html"},
     raw_link={"href": "", "rel": "source", "type": "text/html"},
-    optical_data={"sensor": "sentinel2msi", "sensor": "austrian_orthofoto_series"},
+    optical_data={"sensor": "sentinel2msi", "sensor": "austrian_orthophoto_series"},
     labels={"label_classes": [{"name": "Buildings", "category": 41},
                               {"name": "Adjacent building areas", "category": 83},
                               {"name": "Flowing water", "category": 59},
