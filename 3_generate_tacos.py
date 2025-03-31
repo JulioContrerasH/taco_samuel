@@ -44,8 +44,10 @@ def _parallel(row):
         s2_full_id=row["s2_full_id"],
         s2_tile_time=row["time"],
         cs_cdf=row["cs_cdf"],
+        harmonized_corr=row["low_corr"],
         ortho_has_nodata=row["orthofoto_contains_nodata"],
         scale_factor=4,
+
         **dist_count_dict
     )
     return sample_tortilla
@@ -58,7 +60,7 @@ from concurrent.futures import ProcessPoolExecutor
 with ProcessPoolExecutor() as executor:
     sample_tortillas = list(tqdm(executor.map(_parallel, rows), total=len(rows), desc="Processing Rows"))
 
-print('sampled all tortillas')
+print(f'sampled all tortillas: {len(sample_tortillas)}')
 
 # Create a collection of all tortilla samples
 samples = tacotoolbox.tortilla.datamodel.Samples(
@@ -86,33 +88,6 @@ Each pair consists of a Sentinel-2 image at 10 m resolution, a spatially and tem
 
 **Cadastral Data:** Cadastral data is a vector-based dataset provided by BEV and represent the legal registry for land ownership and management in Austria. It is published semi-annualy at the beginning of April and October. The data is rasterized to 2.5 m and saved as a single band image with each cadastral class reprsented by a unique integer value. In total, 26 cadastral classes are available, ranging from buildings, forest, pastures, road infrastructure to glaciers, open rock and others (see Table below).
 
-| Code | Land Use Category                     |
-|------|--------------------------------------|
-| 41   | Buildings                           |
-| 83   | Adjacent building areas             |
-| 59   | Flowing water                       |
-| 60   | Standing water                      |
-| 61   | Wetlands                            |
-| 64   | Waterside areas                     |
-| 40   | Permanent crops or gardens          |
-| 48   | Fields, meadows or pastures         |
-| 57   | Overgrown areas                     |
-| 55   | Krummholz                           |
-| 56   | Forests                             |
-| 58   | Forest roads                        |
-| 42   | Car parks                           |
-| 62   | Low vegetation areas                |
-| 63   | Operating area                      |
-| 65   | Roadside areas                      |
-| 72   | Cemetery                            |
-| 84   | Mining areas, dumps and landfills   |
-| 87   | Rock and scree surfaces             |
-| 88   | Glaciers                            |
-| 92   | Rail transport areas                |
-| 95   | Road traffic areas                  |
-| 96   | Recreational area                   |
-| 52   | Gardens                             |
-| 54   | Alps                                |
 
 Both Orthophoto and cadastral data is temporally and spatially aligned with each other and the Sentinel-2 images. A publication detailing this processing is currently under review.
 
@@ -158,7 +133,7 @@ The dataset is organized in TACO multi-part files for direct use with the TACO f
 collection_object = tacotoolbox.datamodel.Collection(
     id="sen2austria",
     title="SEN2AUSTRIA: A Super-Resolution Validation Dataset with Austrian Orthophoto Imagery and Cadstral Ground Truth Data",
-    dataset_version="0.0.1",  # Update version accordingly
+    dataset_version="0.0.2",  # Update version accordingly
     description=description,
     licenses=["cc-by-4.0", "cc0-1.0"],
     extent={
